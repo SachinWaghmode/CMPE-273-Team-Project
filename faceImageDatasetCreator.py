@@ -1,20 +1,23 @@
 import cv2
-import sqlite3
 import MySQLdb as mdb
 import sys
+
 
 # Load the classifier xml from open cv2
 faceDetect = cv2.CascadeClassifier('haarcascade_frontalface_alt.xml')
 
+#Load the classifier xml for Eye
+eyeDetect = cv2.CascadeClassifier('haarcascade_eye.xml')
+
 # Start the web CAM and capture the image
-webCam = cv2.VideoCapture(0)
+webCam = cv2.VideoCapture(-1)
 
 
-def insertOrUpdate(id, name, email_id):
+def insertOrUpdate(id, name, email_id,servername,username,password,DBName):
 
     # Connect to the database
-    con = mdb.connect('localhost', 'root',
-                      'manish', 'CMPE273');
+    con = mdb.connect(servername, username,
+                      password, DBName);
 
     # Query the database tables to check if the student already registered.
     cmd = "select sjsu_id from student WHERE sjsu_id = '" + id + "'"
@@ -24,6 +27,12 @@ def insertOrUpdate(id, name, email_id):
     cur = con.cursor()
     cur.execute(cmd)
     rows = cur.fetchall()
+    #make blob object to save color image in DB
+    #pick the color image from dataset
+
+    print "dataset/studentId." + id + ".jpg"
+    blob_value = open("dataset/studentId." + id + ".jpg","rb").read()
+
     # Variable to check if student is present
     isStudentPresent = 0
     for row in rows:
@@ -38,15 +47,17 @@ def insertOrUpdate(id, name, email_id):
                                                  "Do you want to update this record? (Y/N)").lower()
         if choice == "y":
             # If user wants to update the record then
-            cmd= "UPDATE student SET name= '" + name + "' , email_id = '" + email_id + \
-                 "' Where sjsu_id = '" + id +"'"
+            cmd= "UPDATE student SET name= %s ,image= %s , email_id = %s Where sjsu_id = %s "
+            print cmd
+            cur.execute(cmd,(name,blob_value,email_id,id))
         else:
             print "No Changes made to the existing record."
     else:
         # There is no record for the user in database hence insert new record in Student table.
-        cmd = "INSERT INTO student(sjsu_id,name,email_id) VALUES('" + id + "','" + name + "','" + email_id + "')"
-
-    cur.execute(cmd)
+        #cmd = "INSERT INTO student(sjsu_id,name,image,email_id) VALUES('" + id + "','" + name + "','" + blob_value + "','" + email_id + "')"
+        cmd = "INSERT INTO student(sjsu_id,name,image,email_id) VALUES(%s,%s,%s,%s)"
+        cur.execute(cmd,(id,name,blob_value,email_id))
+    print cmd
     con.commit()
 
 def saveImageFromCam(id, name, email_id):
@@ -55,6 +66,7 @@ def saveImageFromCam(id, name, email_id):
         ret, img = webCam.read()
     # Capture Image Window
         cv2.imshow("Face", img)
+
         if not ret:
             break
     # Convert color image to Gray Scale
@@ -70,11 +82,19 @@ def saveImageFromCam(id, name, email_id):
 
         # Loop over the coordinates
             for (x, y, w, h) in faces:
-            # Save the image of the face
-                cv2.imwrite("dataset/studentId." + id + ".jpg", gray[y:y + h, x:x + w])
-            # Draw a rectangle to display which portion of the face was saved.
+                roi_gray = gray[y:y + h, x:x + w]
+                roi_color = img[y:y + h, x:x + w]
+                # Draw a rectangle to display which portion of the face was saved.
                 cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
-            # Display text to user to confirm if the image is to be saved?
+
+                # Save the image of the face
+                cv2.imwrite("dataset/studentId." + id + ".jpg", roi_gray)
+
+                eyes = eyeDetect.detectMultiScale(roi_gray)
+                for (ex, ey, ew, eh) in eyes:
+                    cv2.rectangle(roi_color, (ex, ey), (ex + ew, ey + eh), (0, 255, 0), 2)
+
+                # Display text to user to confirm if the image is to be saved?
                 cv2.putText(img,"Are you happy with this image?",(10, y+400),
                         cv2.FONT_HERSHEY_DUPLEX, 2, (0, 255, 0))
                 cv2.putText(img, "Press 'C' key again to save & quit.", (10, y+450),
@@ -84,12 +104,12 @@ def saveImageFromCam(id, name, email_id):
                 cv2.waitKey(0)
             break
     try:
-        insertOrUpdate(id, name, email_id)
+        insertOrUpdate(id, name, email_id,'localhost','root', 'manish','CMPE273')
     except mdb.Error, e:
         print "Error %d: %s" % (e.args[0], e.args[1])
         sys.exit(1)
-
-    webCam.release()
+    finally:
+        webCam.release()
 
     cv2.destroyAllWindows()
 id = str(int(str(raw_input("  Please Enter User SJSU ID  "))))
