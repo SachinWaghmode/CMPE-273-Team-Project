@@ -37,7 +37,9 @@ Installation Steps:
 
 1. Download folder 'FaceRecognizer'.
 2. Create folders dataset, recognizer and images.
+
     mkdir dataset, recognizer and images.
+    
 3. Browse to the current working directory.
 4. Run 'python compareimage.py'.
 5. Connect to the localhost in the browser.
